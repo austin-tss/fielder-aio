@@ -48,7 +48,7 @@ function rewriteQuote(raw){return String(raw||'').split(/\n|;|,(?!\d{3})|\+|\ban
 function money(v){return v==null||isNaN(v)?'':'$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function validEmail(e){return /^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/i.test(String(e||'').trim())}
 
-const API_URL='PASTE_AIO_EXEC_URL_HERE'; // placeholder: set to the new Apps Script /exec URL
+const API_URL='https://script.google.com/macros/s/AKfycbyyffd44MggLNMCmREyiJ2bK_l_iv4vWgen7cQopPdlRym9Cdiecc098WV-7ArySvhm/exec'; // placeholder: set to the new Apps Script /exec URL
 const TEST_TO='austin@techsourcedsolutions.com'; // TEST MODE: every customer-facing email goes ONLY here (enforced in Code.gs too)
 let API=new URLSearchParams(location.search).get('api')||localStorage.aioApi||(API_URL.indexOf('PASTE')==0?'':API_URL);
 if(API)localStorage.aioApi=API;
