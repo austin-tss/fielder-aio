@@ -224,4 +224,4 @@ async function resend(id){if(!confirm('Resend the quote email (TEST: to '+TEST_T
 async function inv(id){try{await api({a:'invoice',id,amount:$('#am').value,note:$('#an').value});toast('TEST: invoice sent to '+TEST_TO);await refresh();jview(id)}catch(e){toast(e.message)}}
 async function paid(id,p){try{await api({a:'paid',id,paid:p});await refresh();jview(id)}catch(e){toast(e.message)}}
 if(role)refresh().then(render);else render();
-</script><script src="v5.js?v=20261027b"></script></body></html>
+</script><script src="v5.js?v=20261027c"></script></body></html>
