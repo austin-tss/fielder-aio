@@ -1,6 +1,8 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fielder All-In-One</title><meta name="color-scheme" content="light">
 <style>
+.maddr{color:#112337;font-weight:700;text-decoration:underline;cursor:pointer}.gmap{display:inline-block;font-size:13px;font-weight:700;color:#fff;background:#78a22f;border-radius:999px;padding:3px 9px;margin-left:4px;text-decoration:none;cursor:pointer;white-space:nowrap}.btn .maddr{color:inherit}[data-theme=dark] .maddr{color:#cfe3a8}
+
 :root{--n:#112337;--g:#78a22f;--dg:#34460d;--c:#231f20}
 *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;color:var(--c);background:#f4f6f1}
 header{background:var(--n);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px}
@@ -90,8 +92,11 @@ function key(k){if(k=='⌫')pin=pin.slice(0,-1);else if(k=='✓'||pin.length<4){
 function stat(j){if(j.status=='invoiced')return j.invoice&&j.invoice.paid?'paid':'invoiced';if(j.status=='approved')return j.crew&&j.crew.length?'inprogress':'approved';return j.status}
 const SC={sent:'#2f5d9e',reply:'#7c3aed',approved:'#78a22f',inprogress:'#d97706',complete:'#34460d',invoiced:'#c2410c',paid:'#15803d',declined:'#8a8f98'};
 const ST={paid:'Paid',inprogress:'In progress',sent:'Quoted',approved:'Approved · do the job',declined:'Declined',reply:'Customer replied',complete:'Done · invoice it',invoiced:'Invoiced'};
-function list(title,arr,go,extra=''){A.innerHTML=`${extra}<div class="card"><h2>${title}</h2>${arr.length?'':'<p class="muted">Nothing here right now.</p>'}${arr.map(j=>`<button class="btn n" style="text-align:left" onclick="${go}('${j.id}')">${esc(j.name)}<br><small style="font-weight:400">${esc(j.address)} <span class="badge" style="background:${SC[stat(j)]}">${ST[stat(j)]}</span>${j.response?' · '+esc(j.response.label):''}${av(j)?'<br>🕒 '+esc(av(j)):''} ${cfBadge(j)}</small></button>`).join('')}<button class="btn gr" onclick="refresh().then(render)">↻ Refresh</button></div>`+(root?`<p class="muted"><a href="${root}" target="_blank">Drive folder</a></p>`:'')}
+function list(title,arr,go,extra=''){A.innerHTML=`${extra}<div class="card"><h2>${title}</h2>${arr.length?'':'<p class="muted">Nothing here right now.</p>'}${arr.map(j=>`<button class="btn n" style="text-align:left" onclick="${go}('${j.id}')">${esc(j.name)}<br><small style="font-weight:400">${maplink(j.address,1)} <span class="badge" style="background:${SC[stat(j)]}">${ST[stat(j)]}</span>${j.response?' · '+esc(j.response.label):''}${av(j)?'<br>🕒 '+esc(av(j)):''} ${cfBadge(j)}</small></button>`).join('')}<button class="btn gr" onclick="refresh().then(render)">↻ Refresh</button></div>`+(root?`<p class="muted"><a href="${root}" target="_blank">Drive folder</a></p>`:'')}
 function testBar(){return `<div style="background:#fff3cd;border:2px solid #e0b100;border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:15px"><b>TEST MODE</b> — every customer email goes only to ${TEST_TO}</div>`}
+function mapU(a,g){const e=encodeURIComponent(a);return g?'https://www.google.com/maps/dir/?api=1&destination='+e:'https://maps.apple.com/?daddr='+e}
+function openMap(a,g){window.open(mapU(a,g),'_blank')}
+function maplink(a,inBtn){a=String(a||'').trim();if(!a)return '';const q=esc(JSON.stringify(a));if(inBtn)return `<span class="maddr" role="link" onclick="event.stopPropagation();openMap(${q})">📍 ${esc(a)}</span> <span class="gmap" role="link" onclick="event.stopPropagation();openMap(${q},1)">Google Maps</span>`;return `<span class="addrline"><a class="maddr" href="${esc(mapU(a))}" target="_blank" rel="noopener">📍 ${esc(a)}</a> <a class="gmap" href="${esc(mapU(a,1))}" target="_blank" rel="noopener">Google Maps</a></span>`}
 function av(j){const r=j.response||{};return [r.avail,r.when].filter(Boolean).join(' - ')}
 // ---- schedule + conflicts ----
 const DAYN=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'],MON=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
@@ -142,7 +147,7 @@ async function saveBlk(id){const b={id,date:$('#bd').value,start:$('#bs').value,
 async function delBlk(id){if(!confirm('Delete this block?'))return;try{const r=await api({a:'unblock',block:{id}});blocks=r.blocks;toast('Deleted');sched()}catch(e){toast(e.message)}}
 async function fixEmail(id){const e=prompt('Customer email');if(e==null)return;if(!validEmail(e))return toast('That email does not look right');try{await api({a:'email',id,email:e.trim()});await refresh();jview(id)}catch(x){toast(x.message)}}
 // Manager
-function home(){list('All my projects ('+jobs.length+')',[...jobs].sort((a,b)=>b.created<a.created?-1:1),'jview',`<button class="btn huge" onclick="newq()">+ New customer quote</button><button class="btn huge n" onclick="sched()">📅 Crew Schedule</button>`+testBar())}
+function home(){list('All my projects ('+jobs.length+')',[...jobs].sort((a,b)=>b.created<a.created?-1:1),'jview',`<button class="btn huge" onclick="newq()">+ New customer quote</button><button class="btn huge n" onclick="qn()">📥 Quotes Needed</button><button class="btn huge n" onclick="sched()">📅 Crew Schedule</button>`+testBar())}
 // ===== Address autocomplete (free, keyless: Photon, falling back to Nominatim) =====
 const STATES={alabama:'AL',alaska:'AK',arizona:'AZ',arkansas:'AR',california:'CA',colorado:'CO',connecticut:'CT',delaware:'DE',florida:'FL',georgia:'GA',hawaii:'HI',idaho:'ID',illinois:'IL',indiana:'IN',iowa:'IA',kansas:'KS',kentucky:'KY',louisiana:'LA',maine:'ME',maryland:'MD',massachusetts:'MA',michigan:'MI',minnesota:'MN',mississippi:'MS',missouri:'MO',montana:'MT',nebraska:'NE',nevada:'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND',ohio:'OH',oklahoma:'OK',oregon:'OR',pennsylvania:'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',tennessee:'TN',texas:'TX',utah:'UT',vermont:'VT',virginia:'VA',washington:'WA','west virginia':'WV',wisconsin:'WI',wyoming:'WY','district of columbia':'DC'};
 const st2=s=>STATES[String(s||'').toLowerCase()]||s||'';
@@ -198,7 +203,7 @@ function sec(t,body){return `<div class="card"><h2>${t}</h2>${body}</div>`}
 function resendBtn(j,primary){return j.est?`<button class="btn ${primary?'d':'gr'}" id="rs" onclick="resend('${j.id}')">✉ Resend quote (A/B/C/Other) + PDF</button>`:''}
 function jview(id){GAL=[];cur=id;const j=jobs.find(x=>x.id==id),st=j.status,v=j.invoice||{},paid=v.paid,b=(j.crew||[]).filter(p=>p.kind=='before'),af=(j.crew||[]).filter(p=>p.kind=='after'),np=(j.photos||[]).length+(j.crew||[]).length,li=(j.items||[]).length,tot=j.total!=null?money(j.total):'';
  const K=x=>x+id;
- let h=`<div class="card"><h2>${esc(j.name)}</h2><p style="font-size:18px">📍 <a href="https://maps.google.com/?q=${encodeURIComponent(j.address)}" target="_blank">${esc(j.address)}</a></p>
+ let h=`<div class="card"><h2>${esc(j.name)}</h2><p style="font-size:18px">${maplink(j.address)}</p>
 <p><span class="badge" style="background:${SC[stat(j)]}">${ST[stat(j)]}</span> ${cfBadge(j)}${j.invoice?` <span class="badge ${paid?'paid':'open'}">${paid?'PAID':'OPEN'}</span>`:''}</p>${av(j)?'<p style="font-size:17px">🕒 <b>Customer prefers:</b> '+esc(av(j))+'</p>':''}<p class="muted">TEST MODE: emails go to ${TEST_TO}</p></div>`;
  h+=acc(K('jd'),'Job details',(j.est||'Quote')+' · '+(j.email||'no email'),`${j.est?'<p class="muted">'+j.est+(j.pdf?` · <a href="${j.pdf}" target="_blank">PDF</a>`:'')+'</p>':''}<p>📧 ${esc(j.email)||'<b style="color:#b91c1c">No email on job</b>'} <a href="#" onclick="fixEmail('${id}');return false">edit</a></p>${j.response?'<p><b>Customer answer:</b> '+esc(j.response.label)+(j.response.text?' — '+esc(j.response.text):'')+'</p>':''}${av(j)?'<p><b>Availability:</b> '+esc(av(j))+'</p>':''}${j.notes?'<p>'+esc(j.notes)+'</p>':''}${j.crewNotes?'<p><b>Job notes:</b> '+esc(j.crewNotes)+'</p>':''}${j.folder?`<p><a href="${j.folder}" target="_blank">Project photos in Drive</a></p>`:''}`);
  h+=acc(K('li'),'Line items ('+li+')',tot?tot+' total':'Scope &amp; price',items(j));
@@ -212,11 +217,11 @@ ${acc(K('jn'),'Job notes',j.crewNotes?esc(j.crewNotes).slice(0,60):'Tap to add n
  if(st=='complete'||st=='invoiced'){const am=v.amount||(j.total!=null?money(j.total):amt(j.quote));h+=`<div class="card"><h2>Step 3 · Invoice</h2>${acc(K('pd'),'Payment details','Amount '+esc(am)+' · '+(paid?'PAID':st=='invoiced'?'OPEN':'not sent'),`<label>Amount</label><input id="am" value="${esc(am)}"><label>Note</label><textarea id="an" rows="2">${esc(v.note||'Payment due within 15 days. Thank you!')}</textarea>`)}
 <button class="btn huge" onclick="inv('${id}')">${j.invoice?'Resend':'Send'} invoice</button>${st=='invoiced'?`<button class="btn ${paid?'gr':'d'}" onclick="paid('${id}',${!paid})">${paid?'Mark OPEN':'Mark PAID'}</button>`:''}</div>`}
  if(['approved','complete','invoiced'].includes(st)&&j.est)h+=`<div class="card">${resendBtn(j,false)}</div>`;
- h+='<button class="btn gr" onclick="render()">← All projects</button>';
+ h+=remCard(j)+'<button class="btn gr" onclick="render()">← All projects</button>';
  A.innerHTML=h;if(st=='approved')mic('cm','cn')}
 async function resend(id){if(!confirm('Resend the quote email (TEST: to '+TEST_TO+')?'))return;const b=$('#rs');b.disabled=true;b.textContent='Sending…';
  try{await api({a:'resend',id});toast('TEST: quote re-sent to '+TEST_TO)}catch(e){toast(e.message)}b.disabled=false;b.textContent='✉ Resend quote (A/B/C/Other) + PDF'}
 async function inv(id){try{await api({a:'invoice',id,amount:$('#am').value,note:$('#an').value});toast('TEST: invoice sent to '+TEST_TO);await refresh();jview(id)}catch(e){toast(e.message)}}
 async function paid(id,p){try{await api({a:'paid',id,paid:p});await refresh();jview(id)}catch(e){toast(e.message)}}
 if(role)refresh().then(render);else render();
-</script></body></html>
+</script><script src="v5.js?v=20261027a"></script></body></html>
