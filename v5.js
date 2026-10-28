@@ -1,5 +1,5 @@
 if(typeof armBack!=='function')window.armBack=function(){};
-if(typeof myPin!=='function')window.myPin=function(){return '1234'};
+if(typeof myPin!=='function')window.myPin=function(){return sessionStorage.aioPin||'1234'};
 // ===== v5: Quotes Needed + text reminders =====
 const REDEPLOY=m=>String(m||'')==='Bad action'||String(m||'')==='Job not found'||/Unexpected token|Failed to fetch|JSON/i.test(String(m||''));
 let QN=[];

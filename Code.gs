@@ -43,9 +43,11 @@ function savePhotos_(j,list,kind){var f=folder_(j);
     var x=f.createFile(b);x.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
     return {id:x.getId(),url:'https://drive.google.com/thumbnail?id='+x.getId()+'&sz=w1200',kind:kind};});}
 function esc_(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
-function estNo_(){var p=PropertiesService.getScriptProperties(),y=new Date().getFullYear(),k='EST'+y,n=Number(p.getProperty(k)||0)+1;p.setProperty(k,String(n));return 'FT-EST-'+y+'-'+('000'+n).slice(-4);}
+function estNo_(){var p=PropertiesService.getScriptProperties(),y=new Date().getFullYear(),k='EST'+y,n=Number(p.getProperty(k)||0)+1;p.setProperty(k,String(n));return 'FT-EST-'+y+'-'+(n<1000?('000'+n).slice(-4):String(n));}
 function today_(){return Utilities.formatDate(new Date(),'America/New_York','MMMM d, yyyy');}
-function total_(items){return (items||[]).reduce(function(a,i){return a+(Number(i.price)||0)},0);}
+function num_(v,dflt){if(v==null||v==='')return dflt;var n=Number(String(v).replace(/[$,\s]/g,''));return isFinite(n)?n:dflt;}
+function total_(items){return (items||[]).reduce(function(a,i){return a+num_(i.price,0)},0);}
+function inRoot_(f){var rid=root_().getId(),seen=0,q=[f];while(q.length&&seen<40){var x=q.shift();seen++;if(!x.getParents)return false;var it=x.getParents();while(it.hasNext()){var par=it.next();if(par.getId()==rid)return true;q.push(par);}}return false;}
 function availText_(r){if(!r||!(r.avail||r.when))return '';return [r.avail,r.when].filter(Boolean).join(' - ');}
 // ---- shared branded pieces ----
 function testNote_(j){return '<p style="background:#fff3cd;border:1px solid #e0b100;padding:8px 10px;border-radius:8px;font-size:13px;margin:0 0 14px"><b>TEST MODE</b> &mdash; this email would normally go to the customer: '+esc_(j&&j.email||'(no email on job)')+'. Sent only to '+TEST_TO+'.</p>';}
@@ -103,22 +105,25 @@ function respForm_(j,ans){var slots=SLOTS.map(function(s,i){return '<input type=
    '<p><b>When works best for the work?</b> Tap one:</p>'+slots+'<p><b>Preferred date or time (optional)</b></p><input type=text name=when placeholder="e.g. Tuesday Nov 3 morning">'+
    '<button class=go>Send my answer</button></form>');}
 function doGet(e){var p=e.parameter||{};
-  if(p.a=='img'){var b=DriveApp.getFileById(p.id).getBlob();return out_({ok:true,data:'data:'+b.getContentType()+';base64,'+Utilities.base64Encode(b.getBytes())});}
+  if(p.a=='img'){var fi;try{fi=DriveApp.getFileById(p.id)}catch(x){return out_({ok:false,err:'Not found'})}if(!inRoot_(fi))return out_({ok:false,err:'Not found'});var b=fi.getBlob();return out_({ok:true,data:'data:'+b.getContentType()+';base64,'+Utilities.base64Encode(b.getBytes())});}
   if(p.a=='respond'){var js=load_(),j=js.filter(function(x){return x.id==p.id})[0];if(!j)return page_('<h2>Estimate not found</h2><p>Please call '+CO.phone+'.</p>');
     if(p.ans!='C'&&!p.done)return respForm_(j,p.ans);
     var L=LockService.getScriptLock();L.waitLock(20000);
     try{js=load_();j=js.filter(function(x){return x.id==p.id})[0];respond_(j,p);save_(js);}finally{L.releaseLock();}
     var av=availText_(j.response);
     return page_('<h2 style="color:'+DG+'">Thank you!</h2><p style="font-size:17px">Your answer was received: <b>'+esc_(j.response.label)+'</b></p>'+(av?'<p>Preferred time: <b>'+esc_(av)+'</b></p>':'')+(j.response.text?'<p>Your note: '+esc_(j.response.text)+'</p>':'')+'<p>We will be in touch shortly to confirm. Questions? Call '+CO.phone+'.</p>');}
+  if(!pinOk_(p))return out_({ok:false,err:'PIN required'});
   return out_({ok:true,root:root_().getUrl(),jobs:load_(),blocks:load_('blocks.json')});}
 function doPost(e){var d=JSON.parse(e.postData.contents),L=LockService.getScriptLock();L.waitLock(30000);var j,send=null,js;
-  try{var v5=v5Api_(d);if(v5)return out_(v5);
+  try{if(d.a=='login'){var lu=user_(d);return out_(lu?{ok:true,name:lu.name,role:lu.role}:{ok:false,err:'Wrong PIN'});}
+    var me=user_(d);if(!me)return out_({ok:false,err:'PIN required'});if(!can_(me,d.a))return out_({ok:false,err:'Your login cannot do that.'});
+    var v5=v5Api_(d);if(v5)return out_(v5);
     js=load_();
     if(d.a=='block'||d.a=='unblock'){var bl=load_('blocks.json');bl=bl.filter(function(b){return b.id!=d.block.id});
       if(d.a=='block'){if(!d.block.id)d.block.id='B'+Date.now().toString(36);bl.push(d.block);}save_(bl,'blocks.json');return out_({ok:true,blocks:bl});}
     if(d.a=='create'){if(d.email&&!validEmail(d.email))return out_({ok:false,err:'That customer email does not look valid.'});
       var items=(d.items&&d.items.length)?d.items:rewriteQuote(d.quote);
-      j={id:'FT-'+Date.now().toString(36).toUpperCase(),est:estNo_(),name:d.name,address:d.address,email:String(d.email||'').trim(),quote:d.quote,items:items,total:d.total!=null&&d.total!==''?Number(d.total):total_(items),notes:d.notes||'',status:'sent',created:new Date().toISOString(),crew:[]};
+      j={id:'FT-'+Date.now().toString(36).toUpperCase(),est:estNo_(),name:d.name,address:d.address,email:String(d.email||'').trim(),quote:d.quote,items:items,total:num_(d.total,total_(items)),notes:d.notes||'',status:'sent',created:new Date().toISOString(),crew:[]};
       j.photos=savePhotos_(j,d.photos,'quote');js.unshift(j);send=sendQuote_;}
     else{j=js.filter(function(x){return x.id==d.id})[0];if(!j)return out_({ok:false,err:'Job not found'});
       if(d.a=='upload'){j.crew=j.crew.concat(savePhotos_(j,d.photos,d.kind));}
@@ -136,7 +141,15 @@ function doPost(e){var d=JSON.parse(e.postData.contents),L=LockService.getScript
 // Run once from the editor to grant permissions and create the Drive folder.
 function setup(){Logger.log(root_().getUrl());}
 
-function pinOk_(d){return String(d&&d.pin||'')==='1234';}
+// ---- Logins: Script Property USERS_JSON = [{"name","role","pin"}] (roles: quoter, estimator, admin).
+// Falls back to Script Property PIN, then '1234' (admin) when USERS_JSON is not set. PINs never live in code.
+var ROLE_ACTS={quoter:'*',estimator:'*',admin:'*'},ADMIN_ONLY={invoice:1,paid:1};
+function users_(){var p=PropertiesService.getScriptProperties(),raw=p.getProperty('USERS_JSON');
+  if(raw){try{var u=JSON.parse(raw);if(Array.isArray(u)&&u.length)return u.filter(function(x){return x&&x.pin}).map(function(x){return {name:String(x.name||''),role:String(x.role||'').toLowerCase(),pin:String(x.pin)}})}catch(e){}}
+  return [{name:'Owner',role:'admin',pin:String(p.getProperty('PIN')||'1234')}];}
+function user_(d){var pin=String(d&&d.pin||'');if(!pin)return null;return users_().filter(function(u){return u.pin===pin})[0]||null;}
+function pinOk_(d){return !!user_(d);}
+function can_(u,a){if(!u)return false;if(ADMIN_ONLY[a])return u.role==='admin';return !!ROLE_ACTS[u.role];}
 function clip_(s,n){return String(s==null?'':s).replace(/\u0000/g,'').trim().slice(0,n);}
 
 // ===================== v5: Quotes Needed + Text reminders =====================

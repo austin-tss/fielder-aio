@@ -63,10 +63,11 @@ const $=s=>document.querySelector(s),A=$('#app');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e.t);e.t=setTimeout(()=>e.style.display='none',3500)}
 async function api(body){if(!API)throw Error('Backend not connected yet');
- const r=body?await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}):await fetch(API);
+ const P=sessionStorage.aioPin||'';if(body&&body.pin==null)body=Object.assign({pin:P},body);
+ const r=body?await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}):await fetch(API+(API.indexOf('?')<0?'?':'&')+'pin='+encodeURIComponent(P));
  const j=await r.json();if(j.ok===false)throw Error(j.err);return j}
 async function refresh(){try{const d=await api();jobs=d.jobs;root=d.root;blocks=d.blocks||[]}catch(e){toast(e.message)}}
-function logout(){sessionStorage.aioRole='';role='';cur=null;render()}
+function logout(){sessionStorage.aioRole='';sessionStorage.aioPin='';role='';cur=null;render()}
 function shrink(f){return new Promise(res=>{const i=new Image();i.onload=()=>{const m=1400,s=Math.min(1,m/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.75))};i.src=URL.createObjectURL(f)})}
 async function pick(inp,cb){for(const f of inp.files)photos.push(await shrink(f));inp.value='';cb()}
 function mic(btnId,fieldId){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,b=$('#'+btnId),q=$('#'+fieldId);
@@ -79,7 +80,7 @@ function tg(k){const e=$('#acc-'+k);e.classList.toggle('open');ACC[k]=e.classLis
 function sm(k,s){const e=$('#sum-'+k);if(e)e.textContent=s}
 let GAL=[];function src(p){return typeof p=='string'?p:'https://lh3.googleusercontent.com/d/'+p.id+'=w1000'}
 function imgs(l){l=l||[];const s=GAL.length;GAL.push(...l);return '<div class="ph">'+l.map((p,i)=>`<img loading="lazy" src="${esc(src(p))}" data-id="${p.id||''}" onerror="fb(this)" onclick="big(${s+i})">`).join('')+'</div>'}
-async function fb(im){if(im.dataset.tried||!im.dataset.id)return;im.dataset.tried=1;try{const r=await fetch(API+'?a=img&id='+im.dataset.id);const j=await r.json();im.src=j.data}catch(e){}}
+async function fb(im){if(im.dataset.tried||!im.dataset.id)return;im.dataset.tried=1;try{const r=await fetch(API+'?a=img&id='+im.dataset.id+'&pin='+encodeURIComponent(sessionStorage.aioPin||''));const j=await r.json();im.src=j.data}catch(e){}}
 let gi=0;function big(i){gi=i;const im=document.querySelector(`.ph img[onclick="big(${i})"]`);$('#lbi').src=im?im.src:src(GAL[i]);$('#lb').style.display='flex'}
 function nav(d){big((gi+d+GAL.length)%GAL.length)}
 function setupCard(){return API?'':`<div class="card"><h2>Connect backend</h2><p class="muted">Paste the Apps Script web app URL once.</p><input id="apiu" placeholder="https://script.google.com/macros/s/.../exec"><button class="btn n" onclick="localStorage.aioApi=API=$('#apiu').value.trim();render()">Save</button></div>`}
@@ -87,14 +88,21 @@ function render(){GAL=[];ACC={};$('#out').hidden=!role;$('#who').textContent=rol
  if(!role){pin='';A.innerHTML=setupCard()+`<div class="card"><h2>Enter your PIN</h2><div id="dots"></div><div class="pin">${[1,2,3,4,5,6,7,8,9,'⌫',0,'✓'].map(k=>`<button onclick="key('${k}')">${k}</button>`).join('')}</div></div>
  <p class="muted">Free estimates · 24 HR emergency · (850) 656-8737</p>`;return}
  home()}
-function key(k){if(k=='⌫')pin=pin.slice(0,-1);else if(k=='✓'||pin.length<4){if(k!='✓')pin+=k}
- $('#dots').textContent='•'.repeat(pin.length);if(pin.length==4){if(ROLES[pin]){role=sessionStorage.aioRole=ROLES[pin];refresh().then(render);A.innerHTML='<div class="card">Loading…</div>'}else{toast('Wrong PIN');pin='';$('#dots').textContent=''}}}
+function key(k){if(k=='⌫')pin=pin.slice(0,-1);else if(k!='✓'&&pin.length<6)pin+=k;
+ $('#dots').textContent='•'.repeat(pin.length);if(k=='✓'||pin.length==6||(pin.length==4&&ROLES[pin]))login(pin)}
+// Server checks the PIN (per-user logins in USERS_JSON). Old backends without 'login' fall back to the built-in PIN.
+async function login(p){pin='';$('#dots').textContent='';if(!p)return;A.querySelector('.pin')&&(A.querySelector('.pin').style.opacity=.5);let r=null,old=false;
+ try{r=await api({a:'login',pin:p})}catch(e){old=/Job not found|Bad action/.test(e.message);if(!old&&!/Wrong PIN/.test(e.message)&&ROLES[p])old=true}
+ const nm=r?(r.name||r.role):(old&&ROLES[p]?ROLES[p]:'');
+ if(!nm){toast('Wrong PIN');render();return}
+ sessionStorage.aioPin=p;role=sessionStorage.aioRole=nm;A.innerHTML='<div class="card">Loading…</div>';refresh().then(render)}
 function stat(j){if(j.status=='invoiced')return j.invoice&&j.invoice.paid?'paid':'invoiced';if(j.status=='approved')return j.crew&&j.crew.length?'inprogress':'approved';return j.status}
 const SC={sent:'#2f5d9e',reply:'#7c3aed',approved:'#78a22f',inprogress:'#d97706',complete:'#34460d',invoiced:'#c2410c',paid:'#15803d',declined:'#8a8f98'};
 const ST={paid:'Paid',inprogress:'In progress',sent:'Quoted',approved:'Approved · do the job',declined:'Declined',reply:'Customer replied',complete:'Done · invoice it',invoiced:'Invoiced'};
-function list(title,arr,go,extra=''){A.innerHTML=`${extra}<div class="card"><h2>${title}</h2>${arr.length?'':'<p class="muted">Nothing here right now.</p>'}${arr.map(j=>`<button class="btn n" style="text-align:left" onclick="${go}('${j.id}')">${esc(j.name)}<br><small style="font-weight:400">${maplink(j.address,1)} <span class="badge" style="background:${SC[stat(j)]}">${ST[stat(j)]}</span>${j.response?' · '+esc(j.response.label):''}${av(j)?'<br>🕒 '+esc(av(j)):''} ${cfBadge(j)}</small></button>`).join('')}<button class="btn gr" onclick="refresh().then(render)">↻ Refresh</button></div>`+(root?`<p class="muted"><a href="${root}" target="_blank">Drive folder</a></p>`:'')}
+function list(title,arr,go,extra=''){A.innerHTML=`${extra}<div class="card"><h2>${title}</h2>${arr.length?'':'<p class="muted">Nothing here right now.</p>'}${arr.map(j=>`<button class="btn n" style="text-align:left" onclick="${go}('${j.id}')">${esc(j.name)}<br><small style="font-weight:400">${listAddr(j.address)} <span class="badge" style="background:${SC[stat(j)]}">${ST[stat(j)]}</span>${j.response?' · '+esc(j.response.label):''}${av(j)?'<br>🕒 '+esc(av(j)):''} ${cfBadge(j)}</small></button>`).join('')}<button class="btn gr" onclick="refresh().then(render)">↻ Refresh</button></div>`+(root?`<p class="muted"><a href="${root}" target="_blank">Drive folder</a></p>`:'')}
 function testBar(){return `<div style="background:#fff3cd;border:2px solid #e0b100;border-radius:12px;padding:10px 14px;margin:0 0 14px;font-size:15px"><b>TEST MODE</b> — every customer email goes only to ${TEST_TO}</div>`}
 function mapU(a,g){const e=encodeURIComponent(a);return g?'https://www.google.com/maps/dir/?api=1&destination='+e:'https://maps.apple.com/?daddr='+e}
+function listAddr(a){a=String(a||'').trim();if(!a)return '';const q=esc(JSON.stringify(a));return `${esc(a)} <span class="gmap" role="link" onclick="event.stopPropagation();event.preventDefault();openMap(${q})">📍 Apple Maps</span> <span class="gmap" role="link" onclick="event.stopPropagation();event.preventDefault();openMap(${q},1)">Google Maps</span>`}
 function openMap(a,g){window.open(mapU(a,g),'_blank')}
 function maplink(a,inBtn){a=String(a||'').trim();if(!a)return '';const q=esc(JSON.stringify(a));if(inBtn)return `<span class="maddr" role="link" onclick="event.stopPropagation();openMap(${q})">📍 ${esc(a)}</span> <span class="gmap" role="link" onclick="event.stopPropagation();openMap(${q},1)">Google Maps</span>`;return `<span class="addrline"><a class="maddr" href="${esc(mapU(a))}" target="_blank" rel="noopener">📍 ${esc(a)}</a> <a class="gmap" href="${esc(mapU(a,1))}" target="_blank" rel="noopener">Google Maps</a></span>`}
 function av(j){const r=j.response||{};return [r.avail,r.when].filter(Boolean).join(' - ')}
