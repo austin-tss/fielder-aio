@@ -62,12 +62,21 @@ let blocks=[],role=sessionStorage.aioRole||'',jobs=[],root='',cur=null,pin='',ph
 const $=s=>document.querySelector(s),A=$('#app');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e.t);e.t=setTimeout(()=>e.style.display='none',3500)}
+// Busy saves are retried up to 2 times with backoff. Actions that send email or texts are NEVER auto-retried.
+const SENDS={create:1,finish:1,invoice:1,resend:1,smsOnWay:1};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 async function api(body){if(!API)throw Error('Backend not connected yet');
  const P=sessionStorage.aioPin||'';if(body&&body.pin==null)body=Object.assign({pin:P},body);
- const r=body?await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}):await fetch(API+(API.indexOf('?')<0?'?':'&')+'pin='+encodeURIComponent(P));
- const j=await r.json();if(j.ok===false)throw Error(j.err);return j}
-async function refresh(){try{const d=await api();jobs=d.jobs;root=d.root;blocks=d.blocks||[]}catch(e){toast(e.message)}}
-function logout(){sessionStorage.aioRole='';sessionStorage.aioPin='';role='';cur=null;render()}
+ const sends=!!(body&&(SENDS[body.a]||body.send));
+ for(let n=0;;n++){let j;
+  try{const r=body?await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(body)}):await fetch(API+(API.indexOf('?')<0?'?':'&')+'pin='+encodeURIComponent(P));j=await r.json()}
+  catch(e){if(!body&&n<2){await sleep(1200*(n+1));continue}throw Error(sends?'No answer from the server. Check the job before sending again so the customer is not emailed twice.':'The server did not answer. Please try again.')}
+  if(j.ok===false&&j.busy&&!sends&&n<2){await sleep(1000*(n+1)+Math.random()*800);continue}
+  if(j.ok===false)throw Error(j.busy&&sends?'The app is busy. Nothing was sent. Please try again in a few seconds.':j.err);return j}}
+async function archiveJob(id){if(!confirm('Archive this job? It will be hidden from all lists.'))return;
+ try{await api({a:'archive',id});toast('Job archived');await refresh();cur=null;render();window.scrollTo(0,0)}catch(e){toast(e.message)}}
+async function refresh(){try{const d=await api();jobs=(d.jobs||[]).filter(j=>!j.archived);root=d.root;blocks=d.blocks||[]}catch(e){toast(e.message)}}
+function logout(){sessionStorage.aioRole='';sessionStorage.aioArch='';sessionStorage.aioPin='';role='';cur=null;render()}
 function shrink(f){return new Promise(res=>{const i=new Image();i.onload=()=>{const m=1400,s=Math.min(1,m/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.75))};i.src=URL.createObjectURL(f)})}
 async function pick(inp,cb){for(const f of inp.files)photos.push(await shrink(f));inp.value='';cb()}
 function mic(btnId,fieldId){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,b=$('#'+btnId),q=$('#'+fieldId);
@@ -95,7 +104,7 @@ async function login(p){pin='';$('#dots').textContent='';if(!p)return;A.querySel
  try{r=await api({a:'login',pin:p})}catch(e){old=/Job not found|Bad action/.test(e.message);if(!old&&!/Wrong PIN/.test(e.message)&&ROLES[p])old=true}
  const nm=r?(r.name||r.role):(old&&ROLES[p]?ROLES[p]:'');
  if(!nm){toast('Wrong PIN');render();return}
- sessionStorage.aioPin=p;role=sessionStorage.aioRole=nm;A.innerHTML='<div class="card">Loading…</div>';refresh().then(render)}
+ sessionStorage.aioPin=p;sessionStorage.aioArch=r&&r.canArchive?'1':'';role=sessionStorage.aioRole=nm;A.innerHTML='<div class="card">Loading…</div>';refresh().then(render)}
 function stat(j){if(j.status=='invoiced')return j.invoice&&j.invoice.paid?'paid':'invoiced';if(j.status=='approved')return j.crew&&j.crew.length?'inprogress':'approved';return j.status}
 const SC={sent:'#2f5d9e',reply:'#7c3aed',approved:'#78a22f',inprogress:'#d97706',complete:'#34460d',invoiced:'#c2410c',paid:'#15803d',declined:'#8a8f98'};
 const ST={paid:'Paid',inprogress:'In progress',sent:'Quoted',approved:'Approved · do the job',declined:'Declined',reply:'Customer replied',complete:'Done · invoice it',invoiced:'Invoiced'};
@@ -225,7 +234,7 @@ ${acc(K('jn'),'Job notes',j.crewNotes?esc(j.crewNotes).slice(0,60):'Tap to add n
  if(st=='complete'||st=='invoiced'){const am=v.amount||(j.total!=null?money(j.total):amt(j.quote));h+=`<div class="card"><h2>Step 3 · Invoice</h2>${acc(K('pd'),'Payment details','Amount '+esc(am)+' · '+(paid?'PAID':st=='invoiced'?'OPEN':'not sent'),`<label>Amount</label><input id="am" value="${esc(am)}"><label>Note</label><textarea id="an" rows="2">${esc(v.note||'Payment due within 15 days. Thank you!')}</textarea>`)}
 <button class="btn huge" onclick="inv('${id}')">${j.invoice?'Resend':'Send'} invoice</button>${st=='invoiced'?`<button class="btn ${paid?'gr':'d'}" onclick="paid('${id}',${!paid})">${paid?'Mark OPEN':'Mark PAID'}</button>`:''}</div>`}
  if(['approved','complete','invoiced'].includes(st)&&j.est)h+=`<div class="card">${resendBtn(j,false)}</div>`;
- h+=remCard(j)+'<button class="btn gr" onclick="render()">← All projects</button>';
+ h+=remCard(j)+'<button class="btn gr" onclick="render()">← All projects</button>'+(sessionStorage.aioArch==='1'?`<button class="btn gr" type="button" style="font-size:14px;padding:8px 12px;width:auto" onclick="archiveJob('${id}')">🗄 Archive</button>`:'');
  A.innerHTML=h;if(st=='approved')mic('cm','cn')}
 async function resend(id){if(!confirm('Resend the quote email (TEST: to '+TEST_TO+')?'))return;const b=$('#rs');b.disabled=true;b.textContent='Sending…';
  try{await api({a:'resend',id});toast('TEST: quote re-sent to '+TEST_TO)}catch(e){toast(e.message)}b.disabled=false;b.textContent='✉ Resend quote (A/B/C/Other) + PDF'}
